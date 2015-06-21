@@ -4,9 +4,9 @@
 # tests your peer downloading from our ref_peer
 def test1
      
-        peer1_pid = fork do
-            exec("./ref_peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 1 -x 2 -d 0")
-        end 
+    peer1_pid = fork do
+    	exec("./ref_peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 1 -x 2 -d 15")
+    end 
          
 	parent_to_child_read, parent_to_child_write = IO.pipe
 	peer2_pid = fork do
@@ -15,7 +15,7 @@ def test1
 	    $stdin.reopen(parent_to_child_read) or
 			raise "Unable to redirect STDIN"
 
-	    exec("./peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 2 -d 0")    
+	    exec("./peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 2 -d 15")    
 	end
 	parent_to_child_read.close
 
@@ -32,9 +32,9 @@ def test1
 	sleep 3.0
 	if (return_code == 10) 
 
-        	 diff_pid = fork do
-            		exec("diff A.tar test1.tar")
-       		 end 
+        diff_pid = fork do
+            exec("diff A.tar test1.tar")
+       	end 
 		Process.waitpid(diff_pid)
 		return_code = $? >> 8;
 		if (return_code == 0) 
@@ -120,7 +120,7 @@ ENV['SPIFFY_ROUTER'] = "127.0.0.1:#{spiffy_port}"
 puts "starting SPIFFY on port #{spiffy_port}"
 
 spiffy_pid = fork do
-	exec("./hupsim.pl -m topo.map -n nodes.map -p #{spiffy_port} -v 0")    
+	exec("perl hupsim.pl -m topo.map -n nodes.map -p #{spiffy_port} -v 0")    
 end
 
 puts "starting tests"

@@ -164,11 +164,14 @@ void process_inbound_udp(int sock) {
 			packet.header.header_len = htons(HEADER_LEN);
 			packet.header.packet_len = htons(HEADER_LEN + 4 + HASH_SIZE * m);
 			packet.data[0] = (char)m;
+			printf("Test consIHAVE\n");
 			for(j = 0; j < m;j++){
 				int match_line = match[j];
 				for(k = 0; k<HASH_SIZE;k++){
 					packet.data[4+j*HASH_SIZE+k] = chunk_list[match_line][k];
+					printf("%c",chunk_list[match_line][k]);
 				}
+				printf("\n");
 			}
 			
 			//Send out the IHAVE packet				
@@ -179,6 +182,7 @@ void process_inbound_udp(int sock) {
   
 	//2. Handle the IHAVE packet
 	else if(recv_packet.header.packet_type==IHAVE){
+		
     	//选择是否从此peer下载，发送get <chunk-hash>请求，相当于TCP SYN的连接建立和应用层的GET
     	//发送IHAVE包中包含的chunk的请求 --> GET packet
     	/* 问题：
@@ -195,7 +199,9 @@ void process_inbound_udp(int sock) {
 	  	for (i=0;i<num;i++){
 	  		for (j=0;j<HASH_SIZE;j++){
 	  			chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
+				printf("%c",chunk_list[i][j]);
 	  		}
+			printf("\n");
 	 	}
 	 	
     	//Construct the GET packet
@@ -208,14 +214,23 @@ void process_inbound_udp(int sock) {
 		get_packet.data[0] = '1';
 		
 		//Fill the payload
-		for(i = 0; i < num;i++){ 
+		for(i = 0; i < 1;i++){ 
 			for(j = 0; j<HASH_SIZE;j++){
 				get_packet.data[4+j] = chunk_list[i][j];
 			}
+		}
+		//check value
+/*		char* toCheck;
+		printf("the get packet contains\n");
+		for (int k = 0; k < HASH_SIZE; k++) {
+			printf("%c",chunk_list[0][k]);
+			*(toCheck+k)=chunk_list[0][k];					
+		}
+		printf("\n");
+*/		//printf("The get packet contains\n%s\n",toCheck);
 		//Send out the GET packet				
 		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
-			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
-		}    
+			0, (struct sockaddr *) &from, sizeof(struct sockaddr));    
 	}
   
 	//3. Handle the GET packet
