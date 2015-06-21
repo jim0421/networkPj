@@ -89,30 +89,29 @@ int main(int argc, char **argv) {
 
 
 void process_inbound_udp(int sock) {
-  struct sockaddr_in from;
-  socklen_t fromlen;
-  char buf[BUFLEN];
+  	struct sockaddr_in from;
+  	socklen_t fromlen;
+  	char buf[BUFLEN];
 
-  fromlen = sizeof(from);
+  	fromlen = sizeof(from);
 
-  //Get the received packet
-  spiffy_recvfrom(sock, buf, BUFLEN, 0, (struct sockaddr *) &from, &fromlen);
-  data_packet_t recv_packet; 
-  recv_packet = *(data_packet_t *)buf;
+  	//Get the received packet
+  	spiffy_recvfrom(sock, buf, BUFLEN, 0, (struct sockaddr *) &from, &fromlen);
+  	data_packet_t recv_packet; 
+  	recv_packet = *(data_packet_t *)buf;
   
-  /* Deal with different kinds of received packet */
+  	/* Deal with different kinds of received packet */
   
-  //1. Handle the WHOHAS packet
-  if (recv_packet.header.packet_type==WHOHAS){
-  
-	 	int num = (int)(recv_packet.data[0]);
-	  char chunk_list[num][HASH_SIZE];
-	 	int i,j;
+  	//1. Handle the WHOHAS packet
+	if (recv_packet.header.packet_type==WHOHAS){
+		int num = (int)(recv_packet.data[0]);
+		char chunk_list[num][HASH_SIZE];
+		int i,j;
 	 	
-	  for (i=0;i<num;i++){
-	  	for (j=0;j<HASH_SIZE;j++){
-	  		chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
-	  	}
+	  	for (i=0;i<num;i++){
+	  		for (j=0;j<HASH_SIZE;j++){
+	  			chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
+	  		}
 	 	}
 		printf("has_chunks:%s\n",my_config->has_chunk_file);
 		printf("num is %d\n",num);	
@@ -176,28 +175,30 @@ void process_inbound_udp(int sock) {
 			spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, (struct sockaddr *) &from, sizeof(struct sockaddr));
 		}
 	 
-  }
+	}
   
-  //2. Handle the IHAVE packet
-  else if(recv_packet.header.packet_type==IHAVE){
-    //选择是否从此peer下载，发送get <chunk-hash>请求，相当于TCP SYN的连接建立和应用层的GET
-    //发送IHAVE包中包含的chunk的请求 --> GET packet
-    /* 问题：1.选择peer进行下载的标准；
+	//2. Handle the IHAVE packet
+	else if(recv_packet.header.packet_type==IHAVE){
+    	//选择是否从此peer下载，发送get <chunk-hash>请求，相当于TCP SYN的连接建立和应用层的GET
+    	//发送IHAVE包中包含的chunk的请求 --> GET packet
+    	/* 问题：
+			1.选择peer进行下载的标准；
             2.已经下载的chunk的记录
             3.TCP SYN的连接建立包怎么写
             4.怎么知道对应的文件名，比如说A.tar*/
-    //Get the needed information from the received packet,include number of chunk and the chunks_hash
-    int num = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
-    char chunk_list[num][HASH_SIZE];
+    	/* Get the needed information from the received packet,
+			include number of chunk and the chunks_hash */
+    	int num = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
+    	char chunk_list[num][HASH_SIZE];
 	 	int i,j;
 	 	
-	  for (i=0;i<num;i++){
-	  	for (j=0;j<HASH_SIZE;j++){
-	  		chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
-	  	}
+	  	for (i=0;i<num;i++){
+	  		for (j=0;j<HASH_SIZE;j++){
+	  			chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
+	  		}
 	 	}
 	 	
-    //Construct the GET packet
+    	//Construct the GET packet
 		data_packet_t get_packet;
 		get_packet.header.magicnum = htons(MAGICNUM);
 		get_packet.header.version = VERSION;
@@ -208,25 +209,25 @@ void process_inbound_udp(int sock) {
 		
 		//Fill the payload
 		for(i = 0; i < num;i++){ 
-		 
-				for(j = 0; j<HASH_SIZE;j++){
-					get_packet.data[4+j] = chunk_list[i][j];
-				}
-				//Send out the GET packet				
-		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 0, (struct sockaddr *) &from, sizeof(struct sockaddr));
-			}    
-  }
+			for(j = 0; j<HASH_SIZE;j++){
+				get_packet.data[4+j] = chunk_list[i][j];
+			}
+		//Send out the GET packet				
+		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
+			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
+		}    
+	}
   
-  //3. Handle the GET packet
-  else if(recv_packet.header.packet_type==GET){
-    //发送get包中请求的chunk -->  DATA packet
+	//3. Handle the GET packet
+	else if(recv_packet.header.packet_type==GET){
+    	//发送get包中请求的chunk -->  DATA packet
     
-  }
+	}
   
-  //4. Handle the DATA packet
-  else if(recv_packet.header.packet_type==DATA){
-    //收到发送方的数据，返回ACK -->  ACK packet
-  }
+	//4. Handle the DATA packet
+	else if(recv_packet.header.packet_type==DATA){
+    	//收到发送方的数据，返回ACK -->  ACK packet
+	}
 }
 
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num){
@@ -247,6 +248,23 @@ int hash_match(char hash1[], char hash2[]) {
 	return 1;
 }
 
+char hash2Format(char a,char b){
+
+	int high = 0;
+	int low = 0;	
+
+	if((a -'0')>=10)
+		high = 10 + a-'a';
+	else
+		high = a-'0';
+	if((b -'0')>=10)
+		low = 10 + b-'a';
+	else
+		low = b -'0';
+
+	return (char)(high*16+low);
+}
+ 
 void process_get(char *chunkfile, char *outputfile) {
     
     /*Read chunk file into two array(id and hash)*/
@@ -261,7 +279,7 @@ void process_get(char *chunkfile, char *outputfile) {
     fp = fopen(chunkfile,"r");
     char hash[n-1][HASH_SIZE*2];
     int id[n-1];
-    int i = 0;
+    int i = 0;	
     while(!feof(fp)){
         fscanf(fp,"%d %s\n",&id[i],hash[i]);
         i++;
@@ -292,86 +310,73 @@ void process_get(char *chunkfile, char *outputfile) {
     bt_peer_t* peer = my_config->peers;
     while(peer!=NULL){
     	if(my_config->identity != peer->id){
-    		spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, (struct sockaddr *)(&(peer->addr)), sizeof(struct sockaddr));
+    		spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 
+				0, (struct sockaddr *)(&(peer->addr)), sizeof(struct sockaddr));
     	}
     	peer = peer->next;
 	}
     
 }
 
-char hash2Format(char a,char b){
-	int high = 0;
-	int low = 0;
-	if((a -'0')>=10)
-		high = 10 + a-'a';
-	else
-		high = a-'0';
-	if((b -'0')>=10)
-		low = 10 + b-'a';
-	else
-		low = b -'0';
-	return (char)(high*16+low);
-} 
-
 void handle_user_input(char *line, void *cbdata) {
-  char chunkf[128], outf[128];
+  	char chunkf[128], outf[128];
 
-  bzero(chunkf, sizeof(chunkf));
-  bzero(outf, sizeof(outf));
+  	bzero(chunkf, sizeof(chunkf));
+  	bzero(outf, sizeof(outf));
 
-  if (sscanf(line, "GET %120s %120s", chunkf, outf)) {
-    if (strlen(outf) > 0) {
-      process_get(chunkf, outf);
-    }
-  }
+  	if (sscanf(line, "GET %120s %120s", chunkf, outf)) {
+    	if (strlen(outf) > 0) {
+      		process_get(chunkf, outf);
+    	}
+  	}
 }
 
 
 void peer_run(bt_config_t *config) {
-  int sock;
-  struct sockaddr_in myaddr;
-  fd_set readfds;
-  struct user_iobuf *userbuf;
+  	int sock;
+  	struct sockaddr_in myaddr;
+  	fd_set readfds;
+  	struct user_iobuf *userbuf;
   
-  if ((userbuf = create_userbuf()) == NULL) {
-    perror("peer_run could not allocate userbuf");
-    exit(-1);
-  }
+  	if ((userbuf = create_userbuf()) == NULL) {
+    	perror("peer_run could not allocate userbuf");
+    	exit(-1);
+  	}
   
-  if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
-    perror("peer_run could not create socket");
-    exit(-1);
-  }
-  my_sock = sock;
+  	if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
+    	perror("peer_run could not create socket");
+    	exit(-1);
+  	}
+  	my_sock = sock;
   
-  bzero(&myaddr, sizeof(myaddr));
-  myaddr.sin_family = AF_INET;
-  myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  myaddr.sin_port = htons(config->myport);
+  	bzero(&myaddr, sizeof(myaddr));
+  	myaddr.sin_family = AF_INET;
+  	myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  	myaddr.sin_port = htons(config->myport);
   
-  if (bind(sock, (struct sockaddr *) &myaddr, sizeof(myaddr)) == -1) {
-    perror("peer_run could not bind socket");
-    exit(-1);
-  }
+  	if (bind(sock, (struct sockaddr *) &myaddr, sizeof(myaddr)) == -1) {
+    	perror("peer_run could not bind socket");
+    	exit(-1);
+  	}
   
-  spiffy_init(config->identity, (struct sockaddr *)&myaddr, sizeof(myaddr));
+  	spiffy_init(config->identity, (struct sockaddr *)&myaddr, sizeof(myaddr));
   
-  while (1) {
-    int nfds;
-    FD_SET(STDIN_FILENO, &readfds);
-    FD_SET(sock, &readfds);
+  	while (1) {
+    	int nfds;
+    	FD_SET(STDIN_FILENO, &readfds);
+    	FD_SET(sock, &readfds);
     
-    nfds = select(sock+1, &readfds, NULL, NULL, NULL);
+    	nfds = select(sock+1, &readfds, NULL, NULL, NULL);
     
-    if (nfds > 0) {
-      if (FD_ISSET(sock, &readfds)) {
-	process_inbound_udp(sock);
-      }
+    	if (nfds > 0) {
+      		if (FD_ISSET(sock, &readfds)) {
+				process_inbound_udp(sock);
+      		}
       
-      if (FD_ISSET(STDIN_FILENO, &readfds)) {
-	process_user_input(STDIN_FILENO, userbuf, handle_user_input,
-			   "Currently unused");
-      }
-    }
-  }
+      		if (FD_ISSET(STDIN_FILENO, &readfds)) {
+				process_user_input(STDIN_FILENO, userbuf, handle_user_input,
+			   		"Currently unused");
+      		}
+    	}
+  	}
 }
