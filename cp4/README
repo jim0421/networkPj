@@ -1,0 +1,38 @@
+Welcome to Checkpoint4 !
+
+This checkpoint is a bit different, so please read carefully. 
+
+Overview:
+There is only one test run, during which the ref_peer downloads two 
+chunks from your peer, which is expected to perform the congestion
+control required for checkpoint 4.  The network should experience
+no congestion-related loss.  There should be a single 
+loss injected by our test code during the 1st
+chunk transfer.  After the download completes, we check to make sure
+the data is valid, then parse you 'problem2-peer.txt' file to do 
+some basic sanity check on your window values.  Finally, the script
+also generates two graph files for you:
+- test1_win_size.png:
+A plot of window size vs. time, based on your problem2-peer.txt data
+- test1_in_net.png:
+A graph of how many data packets your peer has "in the network" at any
+given time.  This is to check that your program actually adhering to the 
+window values indicated in problem2-peer.txt
+
+Requirements:
+1) Your peer must transfer the correct data  
+2) Passing the basic window sanity checks (determined by grading script)
+3) Check for violations of window (manual comparison of 'test1_win_size.png'
+and 'test1_in_net.png' to look for obvious errors.   
+
+Note: you are expected to check yourself that requirement 3 is fufilled, using
+a simple visual comparison of the two graphs.  The TA's will
+not respond to emails asking whether certain graphs are ''ok'' to get these points.
+Example graphs are included to help give you an idea of what is expected.  See,
+'ex1_win_size.png' and 'ex1_in_net.png'.  
+
+Debug:
+You should not require detailed debugging information from the ref_peer.  If you run
+into problems, when reporting errors please run it with full debug '-d 63' and 
+send this output along with your problem.  
+
