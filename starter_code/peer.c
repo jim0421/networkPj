@@ -164,18 +164,15 @@ void process_inbound_udp(int sock) {
 			packet.header.header_len = htons(HEADER_LEN);
 			packet.header.packet_len = htons(HEADER_LEN + 4 + HASH_SIZE * m);
 			packet.data[0] = (char)m;
-			printf("Test consIHAVE\n");
 			for(j = 0; j < m;j++){
 				int match_line = match[j];
 				for(k = 0; k<HASH_SIZE;k++){
 					packet.data[4+j*HASH_SIZE+k] = chunk_list[match_line][k];
-					printf("%c",chunk_list[match_line][k]);
 				}
-				printf("\n");
 			}
 			
 			//Send out the IHAVE packet				
-			spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, (struct sockaddr *) &from, sizeof(struct sockaddr));
+			spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, (struct sockaddr *) 								&from, sizeof(struct sockaddr));
 		}
 	 
 	}
@@ -186,7 +183,7 @@ void process_inbound_udp(int sock) {
     	//选择是否从此peer下载，发送get <chunk-hash>请求，相当于TCP SYN的连接建立和应用层的GET
     	//发送IHAVE包中包含的chunk的请求 --> GET packet
     	/* 问题：
-			1.选择peer进行下载的标准；
+            1.选择peer进行下载的标准；
             2.已经下载的chunk的记录
             3.TCP SYN的连接建立包怎么写
             4.怎么知道对应的文件名，比如说A.tar*/
@@ -199,7 +196,7 @@ void process_inbound_udp(int sock) {
 	  	for (i=0;i<num;i++){
 	  		for (j=0;j<HASH_SIZE;j++){
 	  			chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
-				printf("%c",chunk_list[i][j]);
+				printf("%d ",chunk_list[i][j]);
 	  		}
 			printf("\n");
 	 	}
@@ -210,13 +207,12 @@ void process_inbound_udp(int sock) {
 		get_packet.header.version = VERSION;
 		get_packet.header.packet_type = GET;
 		get_packet.header.header_len = htons(HEADER_LEN);
-		get_packet.header.packet_len = htons(HEADER_LEN + 4 + HASH_SIZE);
-		get_packet.data[0] = '1';
+		get_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
 		
 		//Fill the payload
-		for(i = 0; i < 1;i++){ 
-			for(j = 0; j<HASH_SIZE;j++){
-				get_packet.data[4+j] = chunk_list[i][j];
+		for(i = 0; i < 1; i++){ 
+			for(j = 0; j < HASH_SIZE; j++){
+				get_packet.data[j] = chunk_list[i][j];
 			}
 		}
 		//check value
