@@ -56,12 +56,10 @@ void peer_run(bt_config_t *config);
 char hash2Format(char a,char b);
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num);
 int hash_match(char hash1[], char hash2[]);	
-void send_getPacket(struct sockaddr_in from);
 
-int my_sock,my_index;
+int my_sock;
 bt_config_t *my_config;
 char my_outputfile[128];
-char *my_chunk_list[HASH_SIZE];
 
 int main(int argc, char **argv) {
   bt_config_t config;
@@ -187,19 +185,43 @@ void process_inbound_udp(int sock) {
     	/* Get the needed information from the received packet,
 			include number of chunk and the chunks_hash */
     	int num = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
-    	//char chunk_list[num][HASH_SIZE];
+    	char chunk_list[num][HASH_SIZE];
 	 	  int i,j;
 	 	
 	  	for (i=0;i<num;i++){
 	  		for (j=0;j<HASH_SIZE;j++){
-	  			my_chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
-				  printf("%d ",my_chunk_list[i][j]);
+	  			chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
+				  printf("%d ",chunk_list[i][j]);
 	  		}
 			  printf("\n");
 	 	  }
-	 	  my_index = 0;
-	 	  send_getPacket(from);
-	 	      
+	 	
+    //Construct the GET packet
+		data_packet_t get_packet;
+		get_packet.header.magicnum = htons(MAGICNUM);
+		get_packet.header.version = VERSION;
+		get_packet.header.packet_type = GET;
+		get_packet.header.header_len = htons(HEADER_LEN);
+		get_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
+		
+		//Fill the payload
+		for(i = 0; i < 1; i++){ 
+			for(j = 0; j < HASH_SIZE; j++){
+				get_packet.data[j] = chunk_list[i][j];
+			}
+		}
+		//check value
+/*		char* toCheck;
+		printf("the get packet contains\n");
+		for (int k = 0; k < HASH_SIZE; k++) {
+			printf("%c",chunk_list[0][k]);
+			*(toCheck+k)=chunk_list[0][k];					
+		}
+		printf("\n");
+*/		//printf("The get packet contains\n%s\n",toCheck);
+		//Send out the GET packet				
+		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
+			0, (struct sockaddr *) &from, sizeof(struct sockaddr));    
 	}
   
 	//3. Handle the GET packet
@@ -243,33 +265,6 @@ void process_inbound_udp(int sock) {
     	//继续发送
     
 	}
-}
-void send_getPacket(struct sockaddr_in from){
-  //Construct the GET packet
-		data_packet_t get_packet;
-		get_packet.header.magicnum = htons(MAGICNUM);
-		get_packet.header.version = VERSION;
-		get_packet.header.packet_type = GET;
-		get_packet.header.header_len = htons(HEADER_LEN);
-		get_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
-		
-		int i;
-		//Fill the payload 
-			for(i = 0; i < HASH_SIZE; i++){
-				get_packet.data[i] = my_chunk_list[my_index][i];
-			}
-		//check value
-/*		char* toCheck;
-		printf("the get packet contains\n");
-		for (int k = 0; k < HASH_SIZE; k++) {
-			printf("%c",chunk_list[0][k]);
-			*(toCheck+k)=chunk_list[0][k];					
-		}
-		printf("\n");
-*/		//printf("The get packet contains\n%s\n",toCheck);
-		//Send out the GET packet				
-		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
-			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
 }
 
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num){
