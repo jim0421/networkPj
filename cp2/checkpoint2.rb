@@ -125,9 +125,9 @@ end
 
 puts "starting tests"
 
-test1
+#test1
 
-sleep 3.0
+#sleep 3.0
 
 test2
 
