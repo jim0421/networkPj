@@ -60,6 +60,7 @@ int hash_match(char hash1[], char hash2[]);
 bt_config_t *my_config;
 char my_outputfile[128];
 u_int cur_seq;
+
 void send_getPacket(struct sockaddr_in from);
 int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
@@ -97,7 +98,10 @@ void process_inbound_udp(int sock) {
   	struct sockaddr_in from;
   	socklen_t fromlen;
   	char buf[BUFLEN];
-
+    
+    int hash_id;  
+		char filename[128];
+		
   	fromlen = sizeof(from);
 
   	//Get the received packet
@@ -107,7 +111,6 @@ void process_inbound_udp(int sock) {
   	char new_chunks_hash[HASHNUM_MAX][HASH_SIZE];
   	int id[HASHNUM_MAX];
   	int chunk_num;
-  	FILE* my_fp; //wait to close?
   	u_int my_seq_pro;
   	/* Deal with different kinds of received packet */
   
@@ -261,11 +264,10 @@ void process_inbound_udp(int sock) {
 	//3. Handle the GET packet
 	else if(recv_packet.header.packet_type==GET){
     	//发送get包中请求的chunk -->  DATA packet
-    	char chunk[HASH_SIZE];
+    	
+    char chunk[HASH_SIZE];
 		//strcpy(chunk,recv_packet.data);
 		int i;
-		int hash_id;
-		char filename[128];
 		for ( i = 0; i < HASH_SIZE; i++ ){			
 			chunk[i] = recv_packet.data[i];
 		}
@@ -282,8 +284,8 @@ void process_inbound_udp(int sock) {
 		fclose(fp);
 		printf("filename is %s\n",filename);
 		//Read the data and send the data packet
-		my_fp =  fopen(filename,"r");
-		fseek(my_fp,512*1024*hash_id,SEEK_SET);
+		fp =  fopen(filename,"r");
+		fseek(fp,512*1024*hash_id,SEEK_SET);
 		//initialize my_seq_pro for 1
 		my_seq_pro = 1;
     	//Construct the DATA packet
@@ -296,28 +298,44 @@ void process_inbound_udp(int sock) {
 		data_packet.header.packet_len = htons(HEADER_LEN+1400);
 		int j;
 		for (j = 0; j < 1400; j++) {
-			data_packet.data[j] = fgetc(my_fp);
+			data_packet.data[j] = fgetc(fp);
 		}
+		fclose(fp);
 		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));		
 	}	
 	//5. Handle the ACK packet
 	else if(recv_packet.header.packet_type==ACK){
-    	//继续发送
-    	u_int my_ack = ntohl(recv_packet.header.ack_num);
-    	
-     	//Construct the DATA packet
+    //继续发送
+    u_int my_ack = ntohl(recv_packet.header.ack_num);
+    
+    //Read the data and send the data packet
+		FILE* fp =  fopen(filename,"r");
+		fseek(fp,512*1024*hash_id + my_ack * 1400,SEEK_SET);
+		my_seq_pro=my_ack+1;	
+    //Construct the DATA packet
 		data_packet_t data_packet;
 		data_packet.header.magicnum = htons(MAGICNUM);
 		data_packet.header.version = VERSION;
 		data_packet.header.packet_type = DATA;
 		data_packet.header.seq_num = htonl(my_seq_pro);
 		data_packet.header.header_len = htons(HEADER_LEN);
-		data_packet.header.packet_len = htons(HEADER_LEN+1400);
-		int j;
-		for (j = 0; j < 1400; j++) {
-			data_packet.data[j] = fgetc(my_fp);
+		if (my_ack == 374) {
+	        data_packet.header.packet_len = htons(HEADER_LEN+688);
+	        int j;
+		    for (j = 0; j < 688; j++) {
+			    data_packet.data[j] = fgetc(fp);
+		    }
+		} else {
+		    data_packet.header.packet_len = htons(HEADER_LEN+1400);
+		    int j;
+		    for (j = 0; j < 1400; j++) {
+			    data_packet.data[j] = fgetc(fp);
+		    }
 		}
+		
+		
+		fclose(fp);
 		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));	   	
 	}

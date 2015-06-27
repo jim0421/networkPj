@@ -57,7 +57,7 @@ end
 def test2
      
         peer1_pid = fork do
-            exec("./peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 1  -d 0")
+            exec("./peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 1  -d 63")
         end 
          
 	parent_to_child_read, parent_to_child_write = IO.pipe
@@ -67,7 +67,7 @@ def test2
 	    $stdin.reopen(parent_to_child_read) or
 			raise "Unable to redirect STDIN"
 
-	    exec("./ref_peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 2 -x 2 -d 0")    
+	    exec("./ref_peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 2 -x 2 -d 63")    
 	end
 	parent_to_child_read.close
 
