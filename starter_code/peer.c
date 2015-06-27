@@ -18,6 +18,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
 #include "debug.h"
 #include "spiffy.h"
 #include "bt_parse.h"
@@ -60,10 +63,20 @@ int hash_match(char hash1[], char hash2[]);
 bt_config_t *my_config;
 char my_outputfile[128];
 u_int cur_seq;
-
+int hash_id;  
+char filename[128];
+u_int my_seq_pro;
+u_int my_ack;
+struct sockaddr_in my_from; 	
+	
 void send_getPacket(struct sockaddr_in from);
 int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
+void resend();
+void sigalrm_handler(){
+printf("hello1\n");
+    resend();
+}
 
 int main(int argc, char **argv) {
 	bt_config_t config;
@@ -73,6 +86,8 @@ int main(int argc, char **argv) {
 	my_count=0;		
 	my_config = &config;
 
+    signal(SIGALRM,sigalrm_handler);    
+    
 	DPRINTF(DEBUG_INIT, "peer.c main beginning\n");
 
 #ifdef TESTING
@@ -98,10 +113,7 @@ void process_inbound_udp(int sock) {
   	struct sockaddr_in from;
   	socklen_t fromlen;
   	char buf[BUFLEN];
-    
-    int hash_id;  
-		char filename[128];
-		
+	my_from = from;	
   	fromlen = sizeof(from);
 
   	//Get the received packet
@@ -111,7 +123,6 @@ void process_inbound_udp(int sock) {
   	char new_chunks_hash[HASHNUM_MAX][HASH_SIZE];
   	int id[HASHNUM_MAX];
   	int chunk_num;
-  	u_int my_seq_pro;
   	/* Deal with different kinds of received packet */
   
   	//1. Handle the WHOHAS packet
@@ -232,21 +243,8 @@ void process_inbound_udp(int sock) {
 		else {
 			seq = cur_seq;
 		}
-		
-/*		if (seq == 375) {
-			printf("finished!\n");
-			fflush(stdin);		
-		}
-*/	
-
-		//printf("the length is %d\npacket_len is %d\nheader_len is %d\ndata_length is %d\n", length, ntohs(recv_packet.header.packet_len), ntohs(recv_packet.header.header_len), strlen(recv_packet.data));
-		//strcpy(my_outputfile,"test1.txt");
-    	
-    	//printf("my_outputfile name is %s\n",my_outputfile);
-
-    
-    	
-    	//Construct the ACK packet
+		  
+    //Construct the ACK packet
 		data_packet_t ack_packet;
 		ack_packet.header.magicnum = htons(MAGICNUM);
 		ack_packet.header.version = VERSION;
@@ -306,14 +304,15 @@ void process_inbound_udp(int sock) {
 	}	
 	//5. Handle the ACK packet
 	else if(recv_packet.header.packet_type==ACK){
-    //继续发送
-    u_int my_ack = ntohl(recv_packet.header.ack_num);
+        //继续发送
+        alarm(0);
+        my_ack = ntohl(recv_packet.header.ack_num);
     
-    //Read the data and send the data packet
+        //Read the data and send the data packet
 		FILE* fp =  fopen(filename,"r");
 		fseek(fp,512*1024*hash_id + my_ack * 1400,SEEK_SET);
 		my_seq_pro=my_ack+1;	
-    //Construct the DATA packet
+        //Construct the DATA packet
 		data_packet_t data_packet;
 		data_packet.header.magicnum = htons(MAGICNUM);
 		data_packet.header.version = VERSION;
@@ -333,14 +332,47 @@ void process_inbound_udp(int sock) {
 			    data_packet.data[j] = fgetc(fp);
 		    }
 		}
-		
-		
+			
 		fclose(fp);
+		//alarm(10);
 		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));	   	
 	}
 }
+void resend(){
 
+    printf("hello2\n");
+    //Read the data and send the data packet
+		FILE* fp =  fopen(filename,"r");
+		fseek(fp,512*1024*hash_id + my_ack * 1400,SEEK_SET);
+		my_seq_pro=my_ack+1;	
+        //Construct the DATA packet
+		data_packet_t data_packet;
+		data_packet.header.magicnum = htons(MAGICNUM);
+		data_packet.header.version = VERSION;
+		data_packet.header.packet_type = DATA;
+		data_packet.header.seq_num = htonl(my_seq_pro);
+		data_packet.header.header_len = htons(HEADER_LEN);
+		if (my_ack == 374) {
+	        data_packet.header.packet_len = htons(HEADER_LEN+688);
+	        int j;
+		    for (j = 0; j < 688; j++) {
+			    data_packet.data[j] = fgetc(fp);
+		    }
+		} else {
+		    data_packet.header.packet_len = htons(HEADER_LEN+1400);
+		    int j;
+		    for (j = 0; j < 1400; j++) {
+			    data_packet.data[j] = fgetc(fp);
+		    }
+		}
+			
+		fclose(fp);
+		//alarm(10);
+		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
+			0, (struct sockaddr *) &my_from, sizeof(struct sockaddr));	 
+			
+}
 void send_getPacket(struct sockaddr_in from){
 	cur_seq = 0;
 	//Construct the GET packet
@@ -357,7 +389,6 @@ void send_getPacket(struct sockaddr_in from){
 		get_packet.data[i] = my_chunk_list[my_index][i];
 	}
 		
-	//printf("The get packet contains\n%s\n",toCheck);
 	//Send out the GET packet				
 	spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
 		0, (struct sockaddr *) &from, sizeof(struct sockaddr));
@@ -399,12 +430,7 @@ char hash2Format(char a,char b){
 }
  
 void process_get(char *chunkfile, char *outputfile) {
-    //printf("output file name is %s\n", outputfile);
 	strcpy(my_outputfile, outputfile);
-	/*	FILE *fp = fopen(my_outputfile,"a");
-		fputc('|',fp);
-		fclose(fp);
-	*/
     /*Read chunk file into two array(id and hash)*/
     FILE *fp = fopen(chunkfile,"r");
     int n = 0;
@@ -475,7 +501,7 @@ void peer_run(bt_config_t *config) {
   	struct sockaddr_in myaddr;
   	fd_set readfds;
   	struct user_iobuf *userbuf;
-  
+    int oldTime, currentTime;
   	if ((userbuf = create_userbuf()) == NULL) {
     	perror("peer_run could not allocate userbuf");
     	exit(-1);
@@ -498,7 +524,7 @@ void peer_run(bt_config_t *config) {
   	}
   
   	spiffy_init(config->identity, (struct sockaddr *)&myaddr, sizeof(myaddr));
-  
+    oldTime = time((time_t*)NULL);
   	while (1) {
     	int nfds;
     	FD_SET(STDIN_FILENO, &readfds);
@@ -515,6 +541,12 @@ void peer_run(bt_config_t *config) {
 				process_user_input(STDIN_FILENO, userbuf, handle_user_input,
 			   		"Currently unused");
       		}
+      		
+    	}
+    	currentTime = time((time_t*)NULL);
+    	if (currentTime-oldTime>1) {
+    	    oldTime = currentTime;
+    	    resend();
     	}
   	}
 }
