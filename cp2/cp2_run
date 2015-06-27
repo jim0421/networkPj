@@ -2,4 +2,5 @@ cd ../starter_code
 make
 cp peer ../cp2
 cd ../cp2
+rm test1.tar
 ruby checkpoint2.rb

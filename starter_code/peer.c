@@ -34,7 +34,7 @@
 #define DATA 3
 #define ACK 4
 #define DENIED 5
-
+#define HASHNUM_MAX 4
 
 /*copy from server.c*/
 typedef struct header_s {
@@ -52,20 +52,22 @@ typedef struct data_packet {
     char data[BUFLEN-16];
 } data_packet_t;
 
+
 void peer_run(bt_config_t *config);
 char hash2Format(char a,char b);
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num);
 int hash_match(char hash1[], char hash2[]);	
-void send_getPacket(struct sockaddr_in from);
 
-int my_sock,my_index;
 bt_config_t *my_config;
 char my_outputfile[128];
-char *my_chunk_list[HASH_SIZE];
+u_int cur_seq;
+void send_getPacket(struct sockaddr_in from);
+int my_sock,my_index,my_number,my_count;
+char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
 
 int main(int argc, char **argv) {
   bt_config_t config;
-  
+  my_count=0;
   bt_init(&config, argc, argv);
 	
   my_config = &config;
@@ -186,20 +188,18 @@ void process_inbound_udp(int sock) {
     	
     	/* Get the needed information from the received packet,
 			include number of chunk and the chunks_hash */
-    	int num = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
+    	my_number = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
     	//char chunk_list[num][HASH_SIZE];
-	 	  int i,j;
-	 	
-	  	for (i=0;i<num;i++){
+	 	int i,j;
+	  	for (i=0;i<my_number;i++){
 	  		for (j=0;j<HASH_SIZE;j++){
 	  			my_chunk_list[i][j] = recv_packet.data[4+i*HASH_SIZE+j];
-				  printf("%d ",my_chunk_list[i][j]);
+				printf("%d ",my_chunk_list[i][j]);
 	  		}
-			  printf("\n");
-	 	  }
-	 	  my_index = 0;
-	 	  send_getPacket(from);
-	 	      
+			printf("\n");
+	 	}
+	 	my_index = 0;
+	 	send_getPacket(from);
 	}
   
 	//3. Handle the GET packet
@@ -212,30 +212,55 @@ void process_inbound_udp(int sock) {
 	//4. Handle the DATA packet
 	else if(recv_packet.header.packet_type==DATA){
     	//收到发送方的数据，存储，并返回ACK -->  ACK packet
-    /* Store the information */
-    int length = recv_packet.header.packet_len - recv_packet.header.header_len;//length of the data
-    FILE *fp = fopen(my_outputfile,"a");
-    printf("my_outputfile name is %s\n",my_outputfile);
-    int i;
+    	/* Store the information */
+		/* Get the seq number from the received packet */
+    	u_int seq;
+		u_int my_seq = ntohl(recv_packet.header.seq_num);
+		printf("seq is %d\n",my_seq);  
+		if (my_seq == (cur_seq+1)) {
+			int length = ntohs(recv_packet.header.packet_len) - 
+				ntohs(recv_packet.header.header_len);//length of the data
+			FILE *fp = fopen(my_outputfile,"a+");
+			int i;
+    		for(i=0;i<length;i++){
+      			fputc(recv_packet.data[i],fp);
+    		}
+    		fclose(fp);
+			cur_seq++;
+			my_count++;
+			seq = my_seq;
+		}
+		else {
+			seq = cur_seq;
+		}
+		
+/*		if (seq == 375) {
+			printf("finished!\n");
+			fflush(stdin);		
+		}
+*/	
+
+		//printf("the length is %d\npacket_len is %d\nheader_len is %d\ndata_length is %d\n", length, ntohs(recv_packet.header.packet_len), ntohs(recv_packet.header.header_len), strlen(recv_packet.data));
+		//strcpy(my_outputfile,"test1.txt");
+    	
+    	//printf("my_outputfile name is %s\n",my_outputfile);
+
     
-    for(i=0;i<length;i++){
-      fputc(recv_packet.data[i],fp);
-    }
-    fclose(fp);
-    
-    /* Get the seq number from the received packet */
-    u_int seq = recv_packet.header.seq_num;
-    printf("seq_num is %d\n",seq);	
-    //Construct the ACK packet
+    	
+    	//Construct the ACK packet
 		data_packet_t ack_packet;
 		ack_packet.header.magicnum = htons(MAGICNUM);
 		ack_packet.header.version = VERSION;
 		ack_packet.header.packet_type = ACK;
-		ack_packet.header.ack_num = seq;
+		ack_packet.header.ack_num = htonl(seq);
 		ack_packet.header.header_len = htons(HEADER_LEN);
-		ack_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
+		ack_packet.header.packet_len = htons(HEADER_LEN);
 		spiffy_sendto(my_sock, &ack_packet, sizeof(data_packet_t ), 
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
+		if(my_count%375==0){
+			my_index++;
+			send_getPacket(from);
+		}
 	}
 	
 	//5. Handle the ACK packet
@@ -244,32 +269,27 @@ void process_inbound_udp(int sock) {
     
 	}
 }
+
 void send_getPacket(struct sockaddr_in from){
-  //Construct the GET packet
-		data_packet_t get_packet;
-		get_packet.header.magicnum = htons(MAGICNUM);
-		get_packet.header.version = VERSION;
-		get_packet.header.packet_type = GET;
-		get_packet.header.header_len = htons(HEADER_LEN);
-		get_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
+	cur_seq = 0;
+	//Construct the GET packet
+	data_packet_t get_packet;
+	get_packet.header.magicnum = htons(MAGICNUM);
+	get_packet.header.version = VERSION;
+	get_packet.header.packet_type = GET;
+	get_packet.header.header_len = htons(HEADER_LEN);
+	get_packet.header.packet_len = htons(HEADER_LEN + HASH_SIZE);
 		
-		int i;
-		//Fill the payload 
-			for(i = 0; i < HASH_SIZE; i++){
-				get_packet.data[i] = my_chunk_list[my_index][i];
-			}
-		//check value
-/*		char* toCheck;
-		printf("the get packet contains\n");
-		for (int k = 0; k < HASH_SIZE; k++) {
-			printf("%c",chunk_list[0][k]);
-			*(toCheck+k)=chunk_list[0][k];					
-		}
-		printf("\n");
-*/		//printf("The get packet contains\n%s\n",toCheck);
-		//Send out the GET packet				
-		spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
-			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
+	int i;
+	//Fill the payload 
+	for(i = 0; i < HASH_SIZE; i++){
+		get_packet.data[i] = my_chunk_list[my_index][i];
+	}
+		
+	//printf("The get packet contains\n%s\n",toCheck);
+	//Send out the GET packet				
+	spiffy_sendto(my_sock, &get_packet, sizeof(data_packet_t ), 
+		0, (struct sockaddr *) &from, sizeof(struct sockaddr));
 }
 
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num){
@@ -308,8 +328,12 @@ char hash2Format(char a,char b){
 }
  
 void process_get(char *chunkfile, char *outputfile) {
-    
-    strcpy(my_outputfile,outputfile);
+    //printf("output file name is %s\n", outputfile);
+	strcpy(my_outputfile, outputfile);
+	/*	FILE *fp = fopen(my_outputfile,"a");
+		fputc('|',fp);
+		fclose(fp);
+	*/
     /*Read chunk file into two array(id and hash)*/
     FILE *fp = fopen(chunkfile,"r");
     int n = 0;
