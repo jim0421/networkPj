@@ -68,7 +68,7 @@ char filename[128];
 u_int my_seq_pro;
 u_int my_ack;
 struct sockaddr_in my_from; 	
-	
+int peer_status;
 void send_getPacket(struct sockaddr_in from);
 int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
 	//my configure
 	my_count=0;		
 	my_config = &config;
-
+	peer_status = 0;
     signal(SIGALRM,sigalrm_handler);    
     
 	DPRINTF(DEBUG_INIT, "peer.c main beginning\n");
@@ -127,6 +127,7 @@ void process_inbound_udp(int sock) {
   
   	//1. Handle the WHOHAS packet
 	if (recv_packet.header.packet_type==WHOHAS){
+		peer_status = 0;
 		int num = (int)(recv_packet.data[0]);
 		char chunk_list[num][HASH_SIZE];
 		int i,j;
@@ -202,7 +203,7 @@ void process_inbound_udp(int sock) {
 	//2. Handle the IHAVE packet
 	else if(recv_packet.header.packet_type==IHAVE){
     	//发送IHAVE包中包含的chunk的请求 --> GET packet
-    	
+    	peer_status = 0;
     	/* Get the needed information from the received packet,
 			include number of chunk and the chunks_hash */
     	my_number = (int)(recv_packet.data[0]);//Number of chunk in the IHAVE packet
@@ -264,8 +265,8 @@ void process_inbound_udp(int sock) {
 	//3. Handle the GET packet
 	else if(recv_packet.header.packet_type==GET){
     	//发送get包中请求的chunk -->  DATA packet
-    	
-    char chunk[HASH_SIZE];
+    	peer_status = 1;
+    	char chunk[HASH_SIZE];
 		//strcpy(chunk,recv_packet.data);
 		int i;
 		for ( i = 0; i < HASH_SIZE; i++ ){			
@@ -531,25 +532,21 @@ void peer_run(bt_config_t *config) {
     	int nfds;
     	FD_SET(STDIN_FILENO, &readfds);
     	FD_SET(sock, &readfds);
-    
     	nfds = select(sock+1, &readfds, NULL, NULL, NULL);
-    
     	if (nfds > 0) {
       		if (FD_ISSET(sock, &readfds)) {
 				process_inbound_udp(sock);
-      		}
-      
-      		if (FD_ISSET(STDIN_FILENO, &readfds)) {
+      		} else if (FD_ISSET(STDIN_FILENO, &readfds)) {
 				process_user_input(STDIN_FILENO, userbuf, handle_user_input,
 			   		"Currently unused");
-      		}
-      		
-    	} else {
-    		currentTime = time((time_t*)NULL);
-    		if (currentTime-oldTime>5) {
-    	    	oldTime = currentTime;
-    	    	resend();
-    		}
-    	}
-  	}
+      		} else {
+    			currentTime = time((time_t*)NULL);
+    			if (currentTime-oldTime>1) {
+    	    		oldTime = currentTime;
+    	    		if (peer_status == 1)
+    	    			resend();
+    			}
+    		}    		
+    	} 
+ 	}
 }
