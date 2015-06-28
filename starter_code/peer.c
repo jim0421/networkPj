@@ -256,7 +256,9 @@ void process_inbound_udp(int sock) {
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));
 		if(my_count%375==0){
 			my_index++;
-			send_getPacket(from);
+			if (my_index < my_number) {
+				send_getPacket(from);
+			}
 		}
 	}
 	//3. Handle the GET packet
@@ -542,11 +544,12 @@ void peer_run(bt_config_t *config) {
 			   		"Currently unused");
       		}
       		
-    	}
-    	currentTime = time((time_t*)NULL);
-    	if (currentTime-oldTime>1) {
-    	    oldTime = currentTime;
-    	    resend();
+    	} else {
+    		currentTime = time((time_t*)NULL);
+    		if (currentTime-oldTime>5) {
+    	    	oldTime = currentTime;
+    	    	resend();
+    		}
     	}
   	}
 }
