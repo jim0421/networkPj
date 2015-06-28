@@ -5,7 +5,7 @@
 def test1
      
         peer1_pid = fork do
-            exec("./peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 1 -d 3")
+            exec("./peer -p nodes.map -c A.chunks -f C.chunks -m 4 -i 1 -d 63")
         end 
         
 	sleep 1.0 
@@ -16,7 +16,7 @@ def test1
 	    $stdin.reopen(parent_to_child_read) or
 			raise "Unable to redirect STDIN"
 
-	    exec("./ref_peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 2 -x 2 -d 3")    
+	    exec("./ref_peer -p nodes.map -c B.chunks -f C.chunks -m 4 -i 2 -x 2 -d 63")    
 	end
 	parent_to_child_read.close
 
@@ -75,7 +75,7 @@ system("rm -rf problem2-peer.txt")
 puts "starting SPIFFY on port #{spiffy_port}"
 
 spiffy_pid = fork do
-	exec("./hupsim_adv.pl -m topo.map -n nodes.map -p #{spiffy_port} -v 0 -l test1_drop.txt -d test1_dup.txt")    
+	exec("perl hupsim_adv.pl -m topo.map -n nodes.map -p #{spiffy_port} -v 0 -l test1_drop.txt -d test1_dup.txt")    
 end
 
 sleep 2.0

@@ -37,8 +37,12 @@
 #define DATA 3
 #define ACK 4
 #define DENIED 5
-#define HASHNUM_MAX 4
-
+#define HASHNUM_MAX 4 //for hash num in *.chunk
+#define PACKETNUM 375
+#define ORIGINAL_SSTHRESH 64
+#define MAXLEN 4096
+#define MAX(x,y) (x>y)?x:y
+#define MIN(x,y) (x<y)?x:y
 /*copy from server.c*/
 typedef struct header_s {
     short magicnum;
@@ -61,6 +65,7 @@ char hash2Format(char a,char b);
 int hash_include(char son[], char father[][HASH_SIZE], int my_hash_num);
 int hash_match(char hash1[], char hash2[]);	
 bt_config_t *my_config;
+
 char my_outputfile[128];
 u_int cur_seq;
 int hash_id;  
@@ -73,11 +78,19 @@ void send_getPacket(struct sockaddr_in from);
 int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
 void resend();
+void time_log(int win_size);
 /*void sigalrm_handler(){
 	printf("hello1\n");
     resend();
 }
 */
+//slow start and congestion avoidance status
+int window_size, ssthresh, lastPacketAcked, lastPacketSent, congestion_mode;
+int changeTime;
+int dataTime_log[PACKETNUM];
+int ackNum_log[PACKETNUM];
+clock_t start_time;
+
 int main(int argc, char **argv) {
 	bt_config_t config;
 	
@@ -86,7 +99,9 @@ int main(int argc, char **argv) {
 	my_count=0;		
 	my_config = &config;
 	peer_status = 0;
-    signal(SIGALRM,sigalrm_handler);    
+	start_time = clock();
+
+    //signal(SIGALRM,sigalrm_handler);    
     
 	DPRINTF(DEBUG_INIT, "peer.c main beginning\n");
 
@@ -122,7 +137,7 @@ void process_inbound_udp(int sock) {
   	recv_packet = *(data_packet_t *)buf;
   	char new_chunks_hash[HASHNUM_MAX][HASH_SIZE];
   	int id[HASHNUM_MAX];
-  	int chunk_num;
+  	int chunk_num = 0;
   	/* Deal with different kinds of received packet */
   
   	//1. Handle the WHOHAS packet
@@ -267,6 +282,19 @@ void process_inbound_udp(int sock) {
 	else if(recv_packet.header.packet_type==GET){
     	//发送get包中请求的chunk -->  DATA packet
     	peer_status = 1;
+    	//initialize congestion control state
+		window_size = 1;
+		ssthresh = ORIGINAL_SSTHRESH;
+		lastPacketAcked = 0;
+		lastPacketSent = 0;
+		congestion_mode = 0; // 0 for slow start and 1 for congestion avoidance
+		changeTime = time((time_t*)NULL);
+		time_log(window_size);
+		int k;
+		for (k=0; k<PACKETNUM; k++){
+			dataTime_log[k] = 0;
+			ackNum_log[k] = 0;
+		}
     	char chunk[HASH_SIZE];
 		//strcpy(chunk,recv_packet.data);
 		int i;
@@ -303,78 +331,136 @@ void process_inbound_udp(int sock) {
 			data_packet.data[j] = fgetc(fp);
 		}
 		fclose(fp);
+		//modify congestion control state
+		lastPacketSent = 1;
+		dataTime_log[0] = time((time_t*)NULL);
+		
 		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
 			0, (struct sockaddr *) &from, sizeof(struct sockaddr));		
 	}	
 	//5. Handle the ACK packet
 	else if(recv_packet.header.packet_type==ACK){
         //继续发送
-        alarm(0);
+        //alarm(0);
         my_ack = ntohl(recv_packet.header.ack_num);
-    
-        //Read the data and send the data packet
-		FILE* fp =  fopen(filename,"r");
-		fseek(fp,512*1024*hash_id + my_ack * 1400,SEEK_SET);
-		my_seq_pro=my_ack+1;	
-        //Construct the DATA packet
-		data_packet_t data_packet;
-		data_packet.header.magicnum = htons(MAGICNUM);
-		data_packet.header.version = VERSION;
-		data_packet.header.packet_type = DATA;
-		data_packet.header.seq_num = htonl(my_seq_pro);
-		data_packet.header.header_len = htons(HEADER_LEN);
-		if (my_ack == 374) {
-	        data_packet.header.packet_len = htons(HEADER_LEN+688);
-	        int j;
-		    for (j = 0; j < 688; j++) {
-			    data_packet.data[j] = fgetc(fp);
-		    }
-		} else {
-		    data_packet.header.packet_len = htons(HEADER_LEN+1400);
-		    int j;
-		    for (j = 0; j < 1400; j++) {
-			    data_packet.data[j] = fgetc(fp);
-		    }
-		}
-			
-		fclose(fp);
-		//alarm(10);
-		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
-			0, (struct sockaddr *) &from, sizeof(struct sockaddr));	   	
+    	ackNum_log[my_ack-1]++;
+        if (ackNum_log[my_ack-1]==1){
+        	if (congestion_mode==0){ //slow start
+        		window_size++;
+        		changeTime = time((time_t*)NULL);
+        		time_log(window_size);
+        	}
+        	else {
+        		int sendTime = dataTime_log[my_ack-1];
+        		if (changeTime < sendTime) {
+        			window_size++;
+        			changeTime = time((time_t*)NULL);
+        			time_log(window_size);
+        		}
+        	}
+        } else if (ackNum_log[my_ack-1] >= 3) {//fast retransmit
+        	int k;
+        	for (k=lastPacketAcked;k<MIN(lastPacketAcked+window_size,PACKETNUM);k++){
+        		dataTime_log[k] = 0;
+        		ackNum_log[k] = 0;
+        	}
+        	if (congestion_mode){
+        		// 1 for congestion avoidance
+        		congestion_mode = 0;      		
+        	}
+        	ssthresh = MAX(window_size/2,2);
+        	window_size = 1;  
+        	time_log(window_size); 	
+        }
+        int isAllAcked = 1;
+        int i;
+        for (i=0;i<my_ack-1;i++) {
+        	if (ackNum_log[i]==0){
+        		isAllAcked = 0;
+        		break;
+        	}      		
+        }
+        if (isAllAcked) {
+        	lastPacketAcked = my_ack;
+        }
+        int toSendNum = MIN(lastPacketAcked + window_size,PACKETNUM) - lastPacketSent;
+        for (i = 0; i < toSendNum && (lastPacketSent+i) < PACKETNUM; i++) {
+ 			//Read the data and send the data packet
+			FILE* fp =  fopen(filename,"r");
+			fseek(fp,512*1024*hash_id + (lastPacketSent+i)*1400,SEEK_SET);
+			my_seq_pro=lastPacketSent+i+1;	
+        	//Construct the DATA packet
+			data_packet_t data_packet;
+			data_packet.header.magicnum = htons(MAGICNUM);
+			data_packet.header.version = VERSION;
+			data_packet.header.packet_type = DATA;
+			data_packet.header.seq_num = htonl(my_seq_pro);
+			data_packet.header.header_len = htons(HEADER_LEN);
+			if (lastPacketSent+i == PACKETNUM-1) {
+	        	data_packet.header.packet_len = htons(HEADER_LEN+688);
+	        	int j;
+		    	for (j = 0; j < 688; j++) {
+			    	data_packet.data[j] = fgetc(fp);
+		    	}
+			} else {
+		    	data_packet.header.packet_len = htons(HEADER_LEN+1400);
+		    	int j;
+		    	for (j = 0; j < 1400; j++) {
+			    	data_packet.data[j] = fgetc(fp);
+		    	}
+			}			
+			fclose(fp);
+			//alarm(10);
+			dataTime_log[lastPacketSent+i] = time((time_t*)NULL);
+			spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
+				0, (struct sockaddr *) &from, sizeof(struct sockaddr));	       
+        }
+        lastPacketSent = MIN(lastPacketAcked + window_size,PACKETNUM);  	
 	}
 }
 void resend(){
-
-    printf("hello2\n");
+	printf("Time out, call resend\n");
+	int k;
+	for (k=lastPacketAcked;k<MIN(lastPacketAcked+window_size,PACKETNUM);k++){
+		dataTime_log[k] = 0;
+		ackNum_log[k] = 0;
+	}
+	if (congestion_mode){
+		// 1 for congestion avoidance
+		congestion_mode = 0;      		
+	}
+	ssthresh = MAX(window_size/2,2);
+	window_size = 1; 
+	changeTime = time((time_t*)NULL);
+    time_log(window_size);
     //Read the data and send the data packet
-		FILE* fp =  fopen(filename,"r");
-		fseek(fp,512*1024*hash_id + my_ack * 1400,SEEK_SET);
-		my_seq_pro=my_ack+1;	
-        //Construct the DATA packet
-		data_packet_t data_packet;
-		data_packet.header.magicnum = htons(MAGICNUM);
-		data_packet.header.version = VERSION;
-		data_packet.header.packet_type = DATA;
-		data_packet.header.seq_num = htonl(my_seq_pro);
-		data_packet.header.header_len = htons(HEADER_LEN);
-		if (my_ack == 374) {
-	        data_packet.header.packet_len = htons(HEADER_LEN+688);
-	        int j;
-		    for (j = 0; j < 688; j++) {
-			    data_packet.data[j] = fgetc(fp);
-		    }
-		} else {
-		    data_packet.header.packet_len = htons(HEADER_LEN+1400);
-		    int j;
-		    for (j = 0; j < 1400; j++) {
-			    data_packet.data[j] = fgetc(fp);
-		    }
+	FILE* fp =  fopen(filename,"r");
+	fseek(fp,512*1024*hash_id + lastPacketAcked * 1400,SEEK_SET);
+	my_seq_pro=lastPacketAcked+1;	
+    //Construct the DATA packet
+	data_packet_t data_packet;
+	data_packet.header.magicnum = htons(MAGICNUM);
+	data_packet.header.version = VERSION;
+	data_packet.header.packet_type = DATA;
+	data_packet.header.seq_num = htonl(my_seq_pro);
+	data_packet.header.header_len = htons(HEADER_LEN);
+	if (lastPacketAcked == 374) {
+		data_packet.header.packet_len = htons(HEADER_LEN+688);
+		int j;
+		for (j = 0; j < 688; j++) {
+			data_packet.data[j] = fgetc(fp);
 		}
-			
-		fclose(fp);
-		//alarm(10);
-		spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
-			0, (struct sockaddr *) &my_from, sizeof(struct sockaddr));	 
+	} else {
+		data_packet.header.packet_len = htons(HEADER_LEN+1400);
+		int j;
+		for (j = 0; j < 1400; j++) {
+			data_packet.data[j] = fgetc(fp);
+		}
+	}
+	fclose(fp);
+	dataTime_log[lastPacketAcked] = time((time_t*)NULL);
+	spiffy_sendto(my_sock, &data_packet, sizeof(data_packet_t ), 
+		0, (struct sockaddr *) &my_from, sizeof(struct sockaddr));	 
 			
 }
 void send_getPacket(struct sockaddr_in from){
@@ -432,7 +518,13 @@ char hash2Format(char a,char b){
 
 	return (char)(high*16+low);
 }
- 
+void time_log(int win_size) {
+	FILE* fp = fopen("problem2-peer.txt","a+");
+	clock_t cTime = clock();
+	int time_seg = (int)(cTime-start_time);
+	fprintf(fp,"f%d\t%d\t%d\n",hash_id,time_seg,win_size);
+	fclose(fp);
+}
 void process_get(char *chunkfile, char *outputfile) {
 	strcpy(my_outputfile, outputfile);
     /*Read chunk file into two array(id and hash)*/
@@ -486,6 +578,7 @@ void process_get(char *chunkfile, char *outputfile) {
     
 }
 
+
 void handle_user_input(char *line, void *cbdata) {
   	char chunkf[128], outf[128];
 
@@ -536,16 +629,34 @@ void peer_run(bt_config_t *config) {
     	nfds = select(sock+1, &readfds, NULL, NULL, NULL);
     	if (nfds > 0) {
       		if (FD_ISSET(sock, &readfds)) {
+      			if (window_size == ssthresh) {
+      				congestion_mode = 1;
+      			}
 				process_inbound_udp(sock);
       		} else if (FD_ISSET(STDIN_FILENO, &readfds)) {
 				process_user_input(STDIN_FILENO, userbuf, handle_user_input,
 			   		"Currently unused");
       		} else {
-    			currentTime = time((time_t*)NULL);
-    			if (currentTime-oldTime>1) {
-    	    		oldTime = currentTime;
-    	    		if (peer_status == 1)
-    	    			resend();
+      			if (peer_status == 1) {
+    				currentTime = time((time_t*)NULL);
+    				if (currentTime-oldTime>1) {
+    	    			oldTime = currentTime;
+     					int lossNum = -1;
+    					int i;
+    					for (i = lastPacketAcked; i < MIN(lastPacketAcked + window_size,PACKETNUM); i++){
+							if (ackNum_log[i]==0) {
+								lossNum = i;
+								break;
+    						}
+						}
+						if (lossNum > -1) {
+							int t1 = dataTime_log[i];
+							int t2 = time((time_t*)NULL);
+							if ( (t2-t1) > 5 ){
+								resend();
+							}
+						}   	    					    			
+    				}
     			}
     		}    		
     	} 
