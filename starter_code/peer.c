@@ -79,6 +79,7 @@ int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
 void resend();
 void time_log(int win_size);
+void level_debug(int level, char* str);
 /*void sigalrm_handler(){
 	printf("hello1\n");
     resend();
@@ -463,6 +464,8 @@ void resend(){
 		0, (struct sockaddr *) &my_from, sizeof(struct sockaddr));	 
 			
 }
+
+
 void send_getPacket(struct sockaddr_in from){
 	cur_seq = 0;
 	//Construct the GET packet
@@ -521,10 +524,19 @@ char hash2Format(char a,char b){
 void time_log(int win_size) {
 	FILE* fp = fopen("problem2-peer.txt","a+");
 	clock_t cTime = clock();
-	int time_seg = (int)(cTime-start_time);
-	fprintf(fp,"f%d\t%d\t%d\n",hash_id,time_seg,win_size);
+	double time_seg = (double)(cTime-start_time);
+	fprintf(fp,"f%d\t%f\t%d\t%ld\t%ld\n",hash_id,time_seg,win_size,cTime,start_time);
 	fclose(fp);
 }
+
+void level_debug(int level, char* str) {
+	char fileN[6];
+	fileN[0] = 'd'; fileN[1] = 'e'; fileN[2] = 'b'; fileN[3] = 'u'; fileN[4] = 'g'; fileN[5] = '0'+level;
+	FILE* fp = fopen((char*)fileN,"a+");
+	fprintf(fp,str);
+	fclose(fp);
+}
+
 void process_get(char *chunkfile, char *outputfile) {
 	strcpy(my_outputfile, outputfile);
     /*Read chunk file into two array(id and hash)*/
@@ -619,7 +631,7 @@ void peer_run(bt_config_t *config) {
     	perror("peer_run could not bind socket");
     	exit(-1);
   	}
-  
+  	
   	spiffy_init(config->identity, (struct sockaddr *)&myaddr, sizeof(myaddr));
     oldTime = time((time_t*)NULL);
   	while (1) {
@@ -637,9 +649,12 @@ void peer_run(bt_config_t *config) {
 				process_user_input(STDIN_FILENO, userbuf, handle_user_input,
 			   		"Currently unused");
       		} else {
+      			level_debug(1,"in nfds > 0 else\n");
       			if (peer_status == 1) {
+      				level_debug(1,"in peer_status == 1\n");
     				currentTime = time((time_t*)NULL);
     				if (currentTime-oldTime>1) {
+    					level_debug(1,"in currenTime-oldTime\n");
     	    			oldTime = currentTime;
      					int lossNum = -1;
     					int i;
@@ -650,9 +665,11 @@ void peer_run(bt_config_t *config) {
     						}
 						}
 						if (lossNum > -1) {
+							level_debug(1,"in lossNum > -1\n");
 							int t1 = dataTime_log[i];
 							int t2 = time((time_t*)NULL);
 							if ( (t2-t1) > 5 ){
+								level_debug(1,"call resend\n");
 								resend();
 							}
 						}   	    					    			

@@ -3,4 +3,5 @@ make
 cp peer ../cp4
 cd ../cp4
 rm problem2-peer.txt
+rm debug*
 ruby checkpoint4.rb
