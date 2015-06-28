@@ -1,0 +1,6 @@
+cd ../starter_code
+make
+cp peer ../cp3
+cd ../cp3
+rm test1.tar
+ruby checkpoint3.rb
