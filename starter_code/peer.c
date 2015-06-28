@@ -73,11 +73,11 @@ void send_getPacket(struct sockaddr_in from);
 int my_sock,my_index,my_number,my_count;
 char my_chunk_list[HASHNUM_MAX][HASH_SIZE];
 void resend();
-void sigalrm_handler(){
-printf("hello1\n");
+/*void sigalrm_handler(){
+	printf("hello1\n");
     resend();
 }
-
+*/
 int main(int argc, char **argv) {
 	bt_config_t config;
 	
@@ -195,7 +195,8 @@ void process_inbound_udp(int sock) {
 			}
 			
 			//Send out the IHAVE packet				
-			spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, (struct sockaddr *) 								&from, sizeof(struct sockaddr));
+			spiffy_sendto(my_sock, &packet, sizeof(data_packet_t ), 0, 
+				(struct sockaddr *)&from, sizeof(struct sockaddr));
 		}
 	 
 	}
@@ -245,7 +246,7 @@ void process_inbound_udp(int sock) {
 			seq = cur_seq;
 		}
 		  
-    //Construct the ACK packet
+		//Construct the ACK packet
 		data_packet_t ack_packet;
 		ack_packet.header.magicnum = htons(MAGICNUM);
 		ack_packet.header.version = VERSION;

@@ -55,21 +55,19 @@ max_get1_before_loss = findMaxWinInRange(low_times[0], low_times[1], times, wins
 max_get1_after_loss = findMaxWinInRange(low_times[1], low_times[2], times, winsize)
 max_get2 = findMaxWinInRange(low_times[2], times[times.length - 1], times, winsize )
 
-if(max_get1_before_loss > 20 || max_get1_before_loss < 7) 
-	puts "FAILURE: expected the max window size before the first loss "
-		"to be in range 7-20."
+if(max_get1_before_loss > 70 || max_get1_before_loss < 50) 
+	puts "FAILURE: expected the max window size before the first loss to be in range 50-70."
 	puts "Your max window during this period was #{max_get1_before_loss}"
 	exit 1
 end
 
-if(max_get1_after_loss > 30 || max_get1_after_loss < 20) 
-	puts "FAILURE: expected the 1st connection's max window size after the first loss "
-		"to be in range 20-30."  
-	puts "Your max window during this period was #{max_get1_after_loss}"
+if(max_get1_after_loss > 40 || max_get1_after_loss < 30) 
+	puts "FAILURE: expected the 1st connection's max window size after the first loss to be in range 30-40. #{low_times[2]}"  
+	puts "Your max window during this period was #{max_get1_before_loss} #{max_get1_after_loss} #{max_get2}"
 	exit 1
 end
 
-if(max_get2 > 30 || max_get2 < 25) 
+if(max_get2 > 70 || max_get2 < 60) 
 	puts "FAILURE: expected the 2nd connection's max window size to be in range 25-30."  
 	puts "Your max window during this period was #{max_get2}"
 	exit 1
